@@ -8,13 +8,13 @@
           <summary>Views</summary>
           <div style="display: flex;justify-content: space-between;flex-wrap: wrap">
             <label>
-              Directive
+              Directivity
               <input type="checkbox"
                      v-model="views.directive"
                      @change="directive.attr('style',views.directive?'':'display: none')">
             </label>
             <label>
-              Directive axis
+              Directivity axis
               <input type="checkbox"
                      v-model="views.polarAxis"
                      @change="polarAxis.attr('style',views.polarAxis?'':'display: none')">
