@@ -130,7 +130,7 @@ export default {
       console.debug(phi)
       field.inverseSolvePhase(phi)
       field.points.forEach(({ phase }, idx) => {
-        this.pointsInput[idx].phase = phase
+        this.pointsInput[idx].phase = phase % (2 * Math.PI)
       })
       this.updateDraw()
     },
