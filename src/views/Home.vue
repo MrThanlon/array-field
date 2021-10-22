@@ -5,28 +5,37 @@
     <div class="panel" ref="panel">
       <div class="panel-body">
         <details open>
-          <summary>Views</summary>
+          <summary>{{ $t('menu.files') }}</summary>
+          <div style="display: flex;flex-wrap: wrap;justify-content: space-between">
+            <button @click="saveFile">{{ $t('saveFile') }}</button>
+            <button @click="openFile">{{ $t('openFile') }}</button>
+            <button @click="exportImage('svg')">{{ $t('exportImage') }}</button>
+            <button @click="exportImage('png')">{{ $t('exportPNG') }}</button>
+          </div>
+        </details>
+        <details open>
+          <summary>{{ $t('menu.views') }}</summary>
           <div style="display: flex;justify-content: space-between;flex-wrap: wrap">
             <label>
-              Directivity
+              {{ $t('directivity') }}
               <input type="checkbox"
                      v-model="views.directivity"
                      @change="directivityPath.attr('style',views.directivity?'':'display: none')">
             </label>
             <label>
-              Directivity axis
+              {{ $t('directivityAxis') }}
               <input type="checkbox"
                      v-model="views.polarAxis"
                      @change="polarAxis.attr('style',views.polarAxis?'':'display: none')">
             </label>
             <label>
-              Point
+              {{ $t('point') }}
               <input type="checkbox"
                      v-model="views.points"
                      @change="pointsPath.attr('style',views.points?'':'display: none')">
             </label>
             <label>
-              Point axis
+              {{ $t('pointAxis') }}
               <input type="checkbox"
                      v-model="views.cartesianAxis"
                      @change="cartesianAxis.attr('style',views.cartesianAxis?'':'display: none')">
@@ -34,28 +43,28 @@
           </div>
         </details>
         <details open>
-          <summary>Point sources</summary>
-          <ul style="overflow-y: scroll">
+          <summary>{{ $t('menu.pointSources') }}</summary>
+          <ul style="">
             <li v-for="(item, idx) in pointsInput" :key="item+idx">
               <p>x: <input type="number" step="0.1" v-model="item.x" @input="updateDraw"> &lambda;</p>
               <p>y: <input type="number" step="0.1" v-model="item.y" @input="updateDraw"> &lambda;</p>
-              <p>phase: <input type="number" v-model="item.phase" @input="updateDraw"> rad</p>
-              <p><button @click="deletePoint(idx)">delete</button></p>
+              <p>{{ $t('phase') }}: <input type="number" v-model="item.phase" @input="updateDraw"> rad</p>
+              <p><button @click="deletePoint(idx)">{{ $t('delete') }}</button></p>
             </li>
             <li>
               <p>x: <input type="number" step="0.1" v-model="xInput"> &lambda;</p>
               <p>y: <input type="number" step="0.1" v-model="yInput"> &lambda;</p>
-              <p>phase: <input type="number" v-model="phaseInput"> rad</p>
+              <p>{{ $t('phase') }}: <input type="number" v-model="phaseInput"> rad</p>
               <p>
                 <button @click="pushPoint(parseFloat(xInput),parseFloat(yInput),parseFloat(phaseInput))">
-                  add
+                  {{ $t('add') }}
                 </button>
               </p>
             </li>
           </ul>
         </details>
         <details open>
-          <summary>Inverse Solve Phase</summary>
+          <summary>{{ $t('menu.inverseSolvePhase') }}</summary>
           <div>
             <label>
               phi:&nbsp;
@@ -147,6 +156,73 @@ export default {
     deletePoint (idx) {
       this.pointsInput.splice(idx, 1)
       this.updateDraw()
+    },
+    // UX
+    saveFile () {
+      const file = JSON.stringify({
+        views: this.views,
+        pointsInput: this.pointsInput
+      })
+      const fileBlob = new Blob([file])
+      const a = document.createElement('a')
+      a.download = 'array-field.json'
+      a.href = URL.createObjectURL(fileBlob)
+      a.click()
+    },
+    openFile () {
+      // create input element
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.accept = '.json'
+      input.multiple = false
+      input.onchange = async () => {
+        if (input.files.length <= 0) {
+          alert(this.$t('alert.noFile'))
+          return
+        }
+        // try parse
+        try {
+          const fileObject = JSON.parse(await input.files[0].text())
+          // exec
+          this.views = fileObject.views
+          this.pointsInput = fileObject.pointsInput
+          this.updateDraw()
+        } catch (e) {
+          console.error(e)
+          alert(this.$t('alert.errorFile'))
+        }
+      }
+      input.click()
+    },
+    exportImage (type) {
+      const svgSource = document.getElementById('svg')
+        .innerHTML.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"')
+      const a = document.createElement('a')
+      const svgBlob = new Blob(['<?xml version="1.0" standalone="no"?>\r\n', svgSource])
+      if (type === 'svg') {
+        a.href = URL.createObjectURL(svgBlob)
+        a.download = 'array-field.svg'
+        a.click()
+      } else if (type === 'png') {
+        // convert svg to png
+        const canvas = document.createElement('canvas')
+        canvas.width = this.borderLength
+        canvas.height = this.borderLength
+        const ctx = canvas.getContext('2d')
+        const img = document.createElement('img')
+        img.width = this.borderLength
+        img.height = this.borderLength
+        img.src = 'data:image/svg+xml;base64,' + btoa(svgSource)
+        img.onload = () => {
+          ctx.drawImage(img, 0, 0)
+          a.href = canvas.toDataURL('image/png')
+          a.download = 'array-field.png'
+          a.click()
+        }
+      } else {
+        // unknown type
+        console.error('unknown image type')
+      }
     }
   },
   mounted () {
@@ -180,7 +256,7 @@ export default {
     }
     this.polarAxis = this.svg.append('path')
       .attr('stroke', 'rgba(255,116,49,0.31)')
-      .attr('fill', 'rgba(0,0,0,0)')
+      .attr('fill', 'none')
       .attr('d', polarAxis)
     // add Cartesian axis
     const cartesianAxis = d3.path()
@@ -194,13 +270,13 @@ export default {
     }
     this.cartesianAxis = this.svg.append('path')
       .attr('stroke', '#005EFF66')
-      .attr('fill', 'rgba(0,0,0,0)')
+      .attr('fill', 'none')
       .attr('d', cartesianAxis)
     // add directivity
     this.directivityPath = this.svg.append('path')
       .attr('stroke', '#ff6518')
       .attr('stroke-width', '2px')
-      .attr('fill', 'rgba(0,0,0,0)')
+      .attr('fill', 'none')
     // add points
     this.pointsPath = this.svg.append('path')
       .attr('fill', '#146bff')
@@ -214,7 +290,6 @@ p {
   padding: 0;
 }
 label {
-  margin: 0 10px;
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
