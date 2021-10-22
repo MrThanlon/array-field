@@ -10,8 +10,8 @@
             <label>
               Directivity
               <input type="checkbox"
-                     v-model="views.directive"
-                     @change="directive.attr('style',views.directive?'':'display: none')">
+                     v-model="views.directivity"
+                     @change="directivityPath.attr('style',views.directivity?'':'display: none')">
             </label>
             <label>
               Directivity axis
@@ -20,13 +20,13 @@
                      @change="polarAxis.attr('style',views.polarAxis?'':'display: none')">
             </label>
             <label>
-              Dot
+              Point
               <input type="checkbox"
-                     v-model="views.dots"
-                     @change="dots.attr('style',views.dots?'':'display: none')">
+                     v-model="views.points"
+                     @change="pointsPath.attr('style',views.points?'':'display: none')">
             </label>
             <label>
-              Dot axis
+              Point axis
               <input type="checkbox"
                      v-model="views.cartesianAxis"
                      @change="cartesianAxis.attr('style',views.cartesianAxis?'':'display: none')">
@@ -34,21 +34,35 @@
           </div>
         </details>
         <details open>
-          <summary>Dot sources</summary>
+          <summary>Point sources</summary>
           <ul style="overflow-y: scroll">
-            <li v-for="(item, idx) in dotsInput" :key="item+idx">
-              <p>x: <input type="number" v-model="item.x" @input="updateDraw"> &lambda;</p>
-              <p>y: <input type="number" v-model="item.y" @input="updateDraw"> &lambda;</p>
+            <li v-for="(item, idx) in pointsInput" :key="item+idx">
+              <p>x: <input type="number" step="0.1" v-model="item.x" @input="updateDraw"> &lambda;</p>
+              <p>y: <input type="number" step="0.1" v-model="item.y" @input="updateDraw"> &lambda;</p>
               <p>phase: <input type="number" v-model="item.phase" @input="updateDraw"> rad</p>
-              <p><button @click="deleteDot(idx)">delete</button></p>
+              <p><button @click="deletePoint(idx)">delete</button></p>
             </li>
             <li>
-              <p>x: <input type="number" v-model="xInput"> &lambda;</p>
-              <p>y: <input type="number" v-model="yInput"> &lambda;</p>
+              <p>x: <input type="number" step="0.1" v-model="xInput"> &lambda;</p>
+              <p>y: <input type="number" step="0.1" v-model="yInput"> &lambda;</p>
               <p>phase: <input type="number" v-model="phaseInput"> rad</p>
-              <p><button @click="pushDot(xInput,yInput,phaseInput)">add</button></p>
+              <p>
+                <button @click="pushPoint(parseFloat(xInput),parseFloat(yInput),parseFloat(phaseInput))">
+                  add
+                </button>
+              </p>
             </li>
           </ul>
+        </details>
+        <details open>
+          <summary>Inverse Solve Phase</summary>
+          <div>
+            <label>
+              phi:&nbsp;
+              <input type="number" step="0.1" min="0" max="6.3" v-model="phiInput" @input="inverseSolvePhase">
+              &nbsp;rad
+            </label>
+          </div>
         </details>
       </div>
     </div>
@@ -56,71 +70,82 @@
 </template>
 
 <script>
-import { Field, Dot } from '../utils/calculate'
+import { Field, PointSource } from '../utils/calculate'
 import * as d3 from 'd3'
 
 let xDirScale
 let yDirScale
 let dirScale
-let xDotScale
-let yDotScale
+let xPointScale
+let yPointScale
+let field
 
 export default {
   name: 'Home',
   data () {
     return {
       svg: null,
-      directive: null,
-      dots: null,
+      directivityPath: null,
+      pointsPath: null,
       cartesianAxis: null,
       polarAxis: null,
       views: {
-        dots: true,
-        directive: true,
+        points: true,
+        directivity: true,
         cartesianAxis: true,
         polarAxis: true
       },
       borderLength: 0,
-      dotsInput: [],
+      pointsInput: [],
       xInput: 0,
       yInput: 0,
-      phaseInput: 0
+      phaseInput: 0,
+      phiInput: 0
     }
   },
   methods: {
-    draw (field) {
-      // console.debug(field)
+    draw () {
       const path = d3.path()
-      // draw directive
+      // draw directivity
       path.moveTo(xDirScale(field.rs[0]), yDirScale(0))
       for (let i = 1; i < field.rs.length; i++) {
         path.lineTo(xDirScale(field.rs[i] * Math.cos(i * field.dphi)),
           yDirScale(field.rs[i] * Math.sin(i * field.dphi)))
       }
       path.closePath()
-      this.directive.attr('d', path)
-      // draw dots
-      const dots = d3.path()
-      field.dots.forEach(dot => {
-        dots.arc(
-          xDotScale(dot.dr / Math.PI / 2 * Math.cos(dot.theta)),
-          yDotScale(dot.dr / Math.PI / 2 * Math.sin(dot.theta)),
-          7, 0, Math.PI * 2)
-        dots.closePath()
+      this.directivityPath.attr('d', path)
+      // draw points
+      const points = d3.path()
+      field.points.forEach(point => {
+        points.arc(
+          xPointScale(point.dr / Math.PI / 2 * Math.cos(point.theta)),
+          yPointScale(point.dr / Math.PI / 2 * Math.sin(point.theta)),
+          5, 0, Math.PI * 2)
+        points.closePath()
       })
-      this.dots.attr('d', dots)
+      this.pointsPath.attr('d', points)
     },
-    updateDraw () {
-      this.draw(new Field(this.dotsInput.map(({ x, y, phase }) => {
-        return Dot.fromCartesian(parseFloat(x), parseFloat(y), parseFloat(phase))
-      })))
-    },
-    pushDot (x, y, phase) {
-      this.dotsInput.push({ x, y, phase })
+    inverseSolvePhase () {
+      const phi = parseFloat(this.phiInput)
+      console.debug(phi)
+      field.inverseSolvePhase(phi)
+      field.points.forEach(({ phase }, idx) => {
+        this.pointsInput[idx].phase = phase
+      })
       this.updateDraw()
     },
-    deleteDot (idx) {
-      this.dotsInput.splice(idx, 1)
+    updateDraw () {
+      field = new Field(this.pointsInput.map(({ x, y, phase }) => {
+        return PointSource.fromCartesian(x, y, phase)
+      }))
+      this.draw()
+    },
+    pushPoint (x, y, phase) {
+      this.pointsInput.push({ x, y, phase })
+      this.updateDraw()
+    },
+    deletePoint (idx) {
+      this.pointsInput.splice(idx, 1)
       this.updateDraw()
     }
   },
@@ -128,15 +153,15 @@ export default {
     // get width
     const length = document.getElementById('svg').offsetWidth
     // set height
-    if (this.$route.query.dots !== undefined) {
-      // insert dot
+    if (this.$route.query.points !== undefined) {
+      // insert point
     }
     this.borderLength = length
     xDirScale = d3.scaleLinear().domain([-1, 1]).range([0, length])
     yDirScale = d3.scaleLinear().domain([-1, 1]).range([length, 0])
     dirScale = d3.scaleLinear().domain([0, 2]).range([0, length])
-    xDotScale = d3.scaleLinear().domain([-2, 2]).range([0, length])
-    yDotScale = d3.scaleLinear().domain([-2, 2]).range([length, 0])
+    xPointScale = d3.scaleLinear().domain([-2, 2]).range([0, length])
+    yPointScale = d3.scaleLinear().domain([-2, 2]).range([length, 0])
     // create svg
     this.svg = d3.select('#svg')
       .append('svg')
@@ -160,25 +185,25 @@ export default {
     // add Cartesian axis
     const cartesianAxis = d3.path()
     for (let i = -2; i <= 2; i += 0.5) {
-      cartesianAxis.moveTo(xDotScale(i), yDotScale(-2))
-      cartesianAxis.lineTo(xDotScale(i), yDotScale(2))
+      cartesianAxis.moveTo(xPointScale(i), yPointScale(-2))
+      cartesianAxis.lineTo(xPointScale(i), yPointScale(2))
       cartesianAxis.closePath()
-      cartesianAxis.moveTo(xDotScale(-2), yDotScale(i))
-      cartesianAxis.lineTo(xDotScale(2), yDotScale(i))
+      cartesianAxis.moveTo(xPointScale(-2), yPointScale(i))
+      cartesianAxis.lineTo(xPointScale(2), yPointScale(i))
       cartesianAxis.closePath()
     }
     this.cartesianAxis = this.svg.append('path')
       .attr('stroke', '#005EFF66')
       .attr('fill', 'rgba(0,0,0,0)')
       .attr('d', cartesianAxis)
-    // add directive
-    this.directive = this.svg.append('path')
-      .attr('stroke', '#ff7431')
+    // add directivity
+    this.directivityPath = this.svg.append('path')
+      .attr('stroke', '#ff6518')
       .attr('stroke-width', '2px')
       .attr('fill', 'rgba(0,0,0,0)')
-    // add dots
-    this.dots = this.svg.append('path')
-      .attr('fill', '#005eff')
+    // add points
+    this.pointsPath = this.svg.append('path')
+      .attr('fill', '#146bff')
   }
 }
 </script>
