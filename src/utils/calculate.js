@@ -25,6 +25,12 @@ function Field (points, circlePoints = 360) {
   this.rs = Array(circlePoints).fill(0)
   // calculate, |sum(dots) of e^(i*dr*cos(phi-theta)+phase)|
   this.dphi = Math.PI * 2 / circlePoints
+  this.param = {
+    mainBeam: 0,
+    leftBeam: Math.PI,
+    rightBeam: -Math.PI,
+    halfPowerBeamWidth: Math.PI * 2
+  }
   if (points.length === 0) {
     return
   }
@@ -36,13 +42,38 @@ function Field (points, circlePoints = 360) {
     }, [0, 0])
     return Math.sqrt(sum[0] ** 2 + sum[1] ** 2)
   })
-  // normalize
+  // max result
   const maxRs = Math.max.apply(null, this.rs)
+  // half-power beam-width
+  const halfPower = Math.sqrt(2) * maxRs / 2
+  for (let i = 0; i < circlePoints; i++) {
+    // FIXME: use equals(?)
+    if (this.rs[i] === maxRs) {
+      // main beam
+      this.param.mainBeam = i * Math.PI * 2 / circlePoints
+      // find right
+      for (let j = i - 1; j >= i - circlePoints; j--) {
+        if (this.rs[j >= 0 ? j : circlePoints + j] <= halfPower) {
+          // found
+          this.param.rightBeam = j * Math.PI * 2 / circlePoints
+          break
+        }
+      }
+      // left
+      for (let j = i + 1; j <= i + circlePoints; j++) {
+        if (this.rs[j < circlePoints ? j : j - circlePoints] <= halfPower) {
+          // found
+          this.param.leftBeam = j * Math.PI * 2 / circlePoints
+          break
+        }
+      }
+    }
+  }
+  // normalize
   this.rs = this.rs.map(v => v / maxRs)
 }
 
 Field.prototype.inverseSolvePhase = function (phi) {
-  console.debug(this)
   // let dr*cos(phi-theta)+phase=0
   // update phase
   this.points = this.points.map(({ dr, theta, phase }) => {

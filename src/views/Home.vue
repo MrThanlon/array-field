@@ -21,7 +21,8 @@
               {{ $t('directivity') }}
               <input type="checkbox"
                      v-model="views.directivity"
-                     @change="directivityPath.attr('style',views.directivity?'':'display: none')">
+                     @change="directivityPath.attr('style',views.directivity?'':'display: none');
+                     mainBeamPath.attr('style',views.directivity?'':'display: none')">
             </label>
             <label>
               {{ $t('directivityAxis') }}
@@ -41,6 +42,25 @@
                      v-model="views.cartesianAxis"
                      @change="cartesianAxis.attr('style',views.cartesianAxis?'':'display: none')">
             </label>
+          </div>
+        </details>
+        <details open>
+          <summary>{{ $t('menu.param') }}</summary>
+          <div>
+            <table>
+              <thead>
+              <tr>
+                <th>{{ $t('halfPowerBeamWidth') }}</th>
+                <th>{{ $t('mainBeamDirection') }}</th>
+              </tr>
+              </thead>
+              <tbody>
+              <tr>
+                <td>&approx;{{ (param.leftBeam-param.rightBeam).toFixed(6) }} rad</td>
+                <td>&approx;{{ param.mainBeam.toFixed(6) }} rad</td>
+              </tr>
+              </tbody>
+            </table>
           </div>
         </details>
         <details open>
@@ -104,6 +124,8 @@ export default {
     return {
       svg: null,
       directivityPath: null,
+      mainBeamPath: null,
+      halfPowerBeamPath: null,
       pointsPath: null,
       cartesianAxis: null,
       polarAxis: null,
@@ -112,6 +134,12 @@ export default {
         directivity: true,
         cartesianAxis: true,
         polarAxis: true
+      },
+      param: {
+        halfPowerBeamWidth: 0,
+        leftBeam: Math.PI,
+        rightBeam: -Math.PI,
+        mainBeam: 0
       },
       cursorFunction: 'point',
       pointSelect: -1,
@@ -135,6 +163,20 @@ export default {
       }
       path.closePath()
       this.directivityPath.attr('d', path)
+      // beam param
+      const mainBeam = d3.path()
+      mainBeam.moveTo(xDirScale(0), yDirScale(0))
+      mainBeam.lineTo(xDirScale(Math.cos(this.param.mainBeam)), yDirScale(Math.sin(this.param.mainBeam)))
+      mainBeam.closePath()
+      this.mainBeamPath.attr('d', mainBeam)
+      // half-power beam
+      const halfPowerBeam = d3.path()
+      halfPowerBeam.moveTo(xDirScale(0), yDirScale(0))
+      halfPowerBeam.lineTo(xDirScale(Math.cos(this.param.leftBeam)), yDirScale(Math.sin(this.param.leftBeam)))
+      halfPowerBeam.closePath()
+      halfPowerBeam.moveTo(xDirScale(0), yDirScale(0))
+      halfPowerBeam.lineTo(xDirScale(Math.cos(this.param.rightBeam)), yDirScale(Math.sin(this.param.rightBeam)))
+      this.halfPowerBeamPath.attr('d', halfPowerBeam)
       // draw points
       const points = d3.path()
       field.points.forEach(point => {
@@ -148,7 +190,6 @@ export default {
     },
     inverseSolvePhase () {
       const phi = parseFloat(this.phiInput)
-      console.debug(phi)
       field.inverseSolvePhase(phi)
       field.points.forEach(({ phase }, idx) => {
         this.pointsInput[idx].phase = phase % (2 * Math.PI)
@@ -160,6 +201,7 @@ export default {
       field = new Field(this.pointsInput.map(({ x, y, phase }) => {
         return PointSource.fromCartesian(x, y, phase)
       }))
+      this.param = field.param
       this.draw()
     },
     pushPoint (x, y, phase) {
@@ -353,7 +395,7 @@ export default {
       .on('mouseup', () => { this.mouseDown = false })
     // add cursor path
     cursorEle = this.svg.append('path')
-      .attr('stroke', '#FF0000D0')
+      .attr('stroke', '#000000')
       .attr('stroke-dasharray', '10,15')
     // add polar axis
     const polarAxis = d3.path()
@@ -389,6 +431,16 @@ export default {
       .attr('stroke', '#ff6518')
       .attr('stroke-width', '2px')
       .attr('fill', 'none')
+    // main beam path
+    this.mainBeamPath = this.svg.append('path')
+      .attr('stroke', '#ff6518')
+      .attr('stroke-width', '2px')
+      .attr('stroke-dasharray', '10,15')
+    // half-power beam path
+    this.halfPowerBeamPath = this.svg.append('path')
+      .attr('stroke', '#ff6518')
+      .attr('stroke-width', '1px')
+      .attr('stroke-dasharray', '10,15')
     // add points
     this.pointsPath = this.svg.append('path')
       .attr('fill', '#146bff')
@@ -397,7 +449,6 @@ export default {
       // load
       try {
         const fileObject = JSON.parse(stash)
-        console.debug(fileObject)
         // exec
         this.views = fileObject.views
         this.pointsInput = fileObject.pointsInput
@@ -422,6 +473,11 @@ label {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
+}
+table,td,th {
+  border: 1px solid #000000;
+  border-collapse: collapse;
+  text-align: center;
 }
 #home {
   width: 100%;

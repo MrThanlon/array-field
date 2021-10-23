@@ -2,6 +2,7 @@ export default {
   menu: {
     files: '文件',
     views: '显示',
+    param: '参数',
     pointSources: '点源',
     inverseSolvePhase: '反解算相位'
   },
@@ -16,6 +17,8 @@ export default {
   exportPNG: '导出PNG图片',
   directivity: '定向性',
   directivityAxis: '定向性坐标系',
+  mainBeamDirection: '主瓣方向',
+  halfPowerBeamWidth: '半功率波束宽度(HPBW)',
   point: '点源',
   pointAxis: '点源坐标系',
   add: '添加',
