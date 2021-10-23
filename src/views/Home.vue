@@ -9,6 +9,7 @@
           <div style="display: flex;flex-wrap: wrap;justify-content: space-between">
             <button @click="saveFile">{{ $t('saveFile') }}</button>
             <button @click="openFile">{{ $t('openFile') }}</button>
+            <button @click="clear">{{ $t('clear') }}</button>
             <button @click="exportImage('svg')">{{ $t('exportImage') }}</button>
             <button @click="exportImage('png')">{{ $t('exportPNG') }}</button>
           </div>
@@ -45,13 +46,19 @@
         <details open>
           <summary>{{ $t('menu.pointSources') }}</summary>
           <ul style="">
-            <li v-for="(item, idx) in pointsInput" :key="item+idx">
+            <li v-for="(item, idx) in pointsInput"
+                :key="item"
+                style="cursor: pointer"
+                :class="{selected:cursorFunction==='point'&&pointSelect===idx}"
+                @click="cursorFunction='point';pointSelect=idx">
               <p>x: <input type="number" step="0.1" v-model="item.x" @input="updateDraw"> &lambda;</p>
               <p>y: <input type="number" step="0.1" v-model="item.y" @input="updateDraw"> &lambda;</p>
               <p>{{ $t('phase') }}: <input type="number" v-model="item.phase" @input="updateDraw"> rad</p>
               <p><button @click="deletePoint(idx)">{{ $t('delete') }}</button></p>
             </li>
-            <li>
+            <li @click="cursorFunction='point';pointSelect=-1"
+                style="cursor: pointer"
+                :class="{selected:cursorFunction==='point'&&pointSelect===-1}">
               <p>x: <input type="number" step="0.1" v-model="xInput"> &lambda;</p>
               <p>y: <input type="number" step="0.1" v-model="yInput"> &lambda;</p>
               <p>{{ $t('phase') }}: <input type="number" v-model="phaseInput"> rad</p>
@@ -66,7 +73,7 @@
         <details open>
           <summary>{{ $t('menu.inverseSolvePhase') }}</summary>
           <div>
-            <label>
+            <label @click="cursorFunction='phi'" :class="{selected: cursorFunction==='phi'}" style="cursor: pointer">
               phi:&nbsp;
               <input type="number" step="0.1" min="0" max="6.3" v-model="phiInput" @input="inverseSolvePhase">
               &nbsp;rad
@@ -88,6 +95,8 @@ let dirScale
 let xPointScale
 let yPointScale
 let field
+let cursorEle
+let stashTimer = -1
 
 export default {
   name: 'Home',
@@ -104,6 +113,9 @@ export default {
         cartesianAxis: true,
         polarAxis: true
       },
+      cursorFunction: 'point',
+      pointSelect: -1,
+      mouseDown: false,
       borderLength: 0,
       pointsInput: [],
       xInput: 0,
@@ -144,6 +156,7 @@ export default {
       this.updateDraw()
     },
     updateDraw () {
+      // do draw
       field = new Field(this.pointsInput.map(({ x, y, phase }) => {
         return PointSource.fromCartesian(x, y, phase)
       }))
@@ -161,7 +174,9 @@ export default {
     saveFile () {
       const file = JSON.stringify({
         views: this.views,
-        pointsInput: this.pointsInput
+        pointsInput: this.pointsInput,
+        cursorFunction: this.cursorFunction,
+        pointSelect: this.pointSelect
       })
       const fileBlob = new Blob([file])
       const a = document.createElement('a')
@@ -194,6 +209,22 @@ export default {
       }
       input.click()
     },
+    stash () {
+      localStorage.setItem('array-field-stash', JSON.stringify({
+        views: this.views,
+        pointsInput: this.pointsInput,
+        cursorFunction: this.cursorFunction,
+        pointSelect: this.pointSelect
+      }))
+      console.debug('stashed')
+    },
+    clear () {
+      // reset all
+      this.pointsInput = []
+      this.cursorFunction = 'point'
+      this.pointSelect = -1
+      this.updateDraw()
+    },
     exportImage (type) {
       const svgSource = document.getElementById('svg')
         .innerHTML.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"')
@@ -225,6 +256,13 @@ export default {
       }
     }
   },
+  beforeUpdate () {
+    // stash
+    if (stashTimer > 0) {
+      clearTimeout(stashTimer)
+    }
+    stashTimer = setTimeout(this.stash, 1000)
+  },
   mounted () {
     // get width
     const length = document.getElementById('svg').offsetWidth
@@ -243,6 +281,80 @@ export default {
       .append('svg')
       .attr('width', this.borderLength)
       .attr('height', this.borderLength)
+      .attr('style', 'cursor: crosshair')
+      .on('mouseleave', e => {
+        this.mouseDown = false
+        if (this.cursorFunction === 'phi') {
+        } else if (this.cursorFunction === 'point') {
+          this.xInput = 0
+          this.yInput = 0
+        }
+        cursorEle.attr('style', 'display: none')
+      })
+      .on('mouseenter', e => {
+        cursorEle.attr('style', '')
+      })
+      .on('mousemove', e => {
+        const cursorPath = d3.path()
+        if (this.cursorFunction === 'phi') {
+          const x = xDirScale.invert(e.offsetX)
+          const y = yDirScale.invert(e.offsetY)
+          const direction = Math.atan2(y, x)
+          cursorPath.moveTo(xDirScale(0), yDirScale(0))
+          cursorPath.lineTo(xDirScale(Math.cos(direction)), yDirScale(Math.sin(direction)))
+          if (this.mouseDown) {
+            // real-time
+            this.phiInput = direction
+            this.inverseSolvePhase()
+          }
+        } else if (this.cursorFunction === 'point') {
+          const x = xPointScale.invert(e.offsetX)
+          const y = yPointScale.invert(e.offsetY)
+          cursorPath.moveTo(0, e.offsetY)
+          cursorPath.lineTo(this.borderLength, e.offsetY)
+          cursorPath.closePath()
+          cursorPath.moveTo(e.offsetX, 0)
+          cursorPath.lineTo(e.offsetX, this.borderLength)
+          cursorPath.closePath()
+          if (this.pointSelect === -1) {
+            this.xInput = x
+            this.yInput = y
+          } else if (this.mouseDown) {
+            // change position
+            this.pointsInput[this.pointSelect] = {
+              x, y, phase: this.pointsInput[this.pointSelect].phase
+            }
+            this.updateDraw()
+          }
+        }
+        cursorEle.attr('d', cursorPath)
+      })
+      .on('mousedown', e => {
+        this.mouseDown = true
+        if (this.cursorFunction === 'phi') {
+          // set phi
+          const x = xDirScale.invert(e.offsetX)
+          const y = yDirScale.invert(e.offsetY)
+          this.phiInput = Math.atan2(y, x)
+          this.inverseSolvePhase()
+        } else if (this.cursorFunction === 'point') {
+          const x = xPointScale.invert(e.offsetX)
+          const y = yPointScale.invert(e.offsetY)
+          if (this.pointSelect === -1) {
+            // add new point
+            this.pushPoint(x, y, 0)
+          } else {
+            // move point
+            this.pointsInput[this.pointSelect] = { x, y, phase: this.pointsInput[this.pointSelect].phase }
+            this.updateDraw()
+          }
+        }
+      })
+      .on('mouseup', () => { this.mouseDown = false })
+    // add cursor path
+    cursorEle = this.svg.append('path')
+      .attr('stroke', '#FF0000D0')
+      .attr('stroke-dasharray', '10,15')
     // add polar axis
     const polarAxis = d3.path()
     for (let i = 0.2; i <= 1; i += 0.2) {
@@ -280,6 +392,23 @@ export default {
     // add points
     this.pointsPath = this.svg.append('path')
       .attr('fill', '#146bff')
+    const stash = localStorage.getItem('array-field-stash')
+    if (stash !== null) {
+      // load
+      try {
+        const fileObject = JSON.parse(stash)
+        console.debug(fileObject)
+        // exec
+        this.views = fileObject.views
+        this.pointsInput = fileObject.pointsInput
+        this.cursorFunction = fileObject.cursorFunction
+        this.pointSelect = fileObject.pointSelect
+        this.updateDraw()
+      } catch (e) {
+        console.error(e)
+        alert(this.$t('alert.errorFile'))
+      }
+    }
   }
 }
 </script>
@@ -299,6 +428,10 @@ label {
   display: flex;
   justify-content: center;
   flex-wrap: wrap;
+}
+
+.selected {
+  background-color: rgba(0,64,130,0.45);
 }
 
 .graph {

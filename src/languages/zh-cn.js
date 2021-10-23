@@ -11,6 +11,7 @@ export default {
   },
   saveFile: '保存文件',
   openFile: '打开文件',
+  clear: '清除',
   exportImage: '导出SVG图片',
   exportPNG: '导出PNG图片',
   directivity: '定向性',
