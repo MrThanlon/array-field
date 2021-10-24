@@ -70,7 +70,7 @@
                     style="cursor: pointer"
                     :class="{selected:cursorFunction==='directivity'}">
                   {{ $t('customDirectionGain') }}
-                  <span v-if="cursorRAD!==null">({{ (cursorRAD/field.rs.length).toFixed(3) }}rad)</span>
+                  <span v-if="cursorRAD!==null">({{ (cursorRAD*Math.PI*2/field.rs.length).toFixed(3) }}rad)</span>
                 </th>
                 <th>{{ $t('halfPowerBeamWidth') }}</th>
                 <th>{{ $t('mainBeamDirection') }}</th>
