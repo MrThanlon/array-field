@@ -1,6 +1,16 @@
 <template>
   <div id="home">
+    <div id="row">
     <div id="svg" class="graph" ref="graph">
+      <svg ref="svg" :width="borderLength" :height="borderLength">
+        <path d="" ref="cursor"></path>
+        <path d="" ref="polarAxis" v-show="views.polarAxis"></path>
+        <path d="" ref="cartesianAxis" v-show="views.cartesianAxis"></path>
+        <path d="" ref="directivity" v-show="views.radiationPattern"></path>
+        <path d="" ref="points" v-show="views.points"></path>
+        <path d="" ref="mainBeam" v-show="views.mainBeam"></path>
+        <path d="" ref="halfPowerBeam" v-show="views.halfPowerBeam"></path>
+      </svg>
     </div>
     <div class="panel" ref="panel">
       <div class="panel-body">
@@ -18,29 +28,34 @@
           <summary>{{ $t('menu.views') }}</summary>
           <div style="display: flex;justify-content: space-between;flex-wrap: wrap">
             <label>
-              {{ $t('directivity') }}
+              {{ $t('radiationPattern') }}
               <input type="checkbox"
-                     v-model="views.directivity"
-                     @change="directivityPath.attr('style',views.directivity?'':'display: none');
-                     mainBeamPath.attr('style',views.directivity?'':'display: none')">
+                     v-model="views.radiationPattern">
             </label>
             <label>
-              {{ $t('directivityAxis') }}
+              {{ $t('mainBeamDirection') }}
               <input type="checkbox"
-                     v-model="views.polarAxis"
-                     @change="polarAxis.attr('style',views.polarAxis?'':'display: none')">
+                     v-model="views.mainBeam">
+            </label>
+            <label>
+              {{ $t('halfPowerBeamWidth') }}
+              <input type="checkbox"
+                     v-model="views.halfPowerBeam">
+            </label>
+            <label>
+              {{ $t('radiationPatternAxis') }}
+              <input type="checkbox"
+                     v-model="views.polarAxis">
             </label>
             <label>
               {{ $t('point') }}
               <input type="checkbox"
-                     v-model="views.points"
-                     @change="pointsPath.attr('style',views.points?'':'display: none')">
+                     v-model="views.points">
             </label>
             <label>
               {{ $t('pointAxis') }}
               <input type="checkbox"
-                     v-model="views.cartesianAxis"
-                     @change="cartesianAxis.attr('style',views.cartesianAxis?'':'display: none')">
+                     v-model="views.cartesianAxis">
             </label>
           </div>
         </details>
@@ -50,14 +65,36 @@
             <table>
               <thead>
               <tr>
+                <th>{{ $t('directivity') }}</th>
+                <th @click="cursorFunction='directivity'"
+                    style="cursor: pointer"
+                    :class="{selected:cursorFunction==='directivity'}">
+                  {{ $t('customDirectionGain') }}
+                  <span v-if="cursorRAD!==null">({{ (cursorRAD/field.rs.length).toFixed(3) }}rad)</span>
+                </th>
                 <th>{{ $t('halfPowerBeamWidth') }}</th>
                 <th>{{ $t('mainBeamDirection') }}</th>
               </tr>
               </thead>
               <tbody>
               <tr>
-                <td>&approx;{{ (param.leftBeam-param.rightBeam).toFixed(6) }} rad</td>
-                <td>&approx;{{ param.mainBeam.toFixed(6) }} rad</td>
+                <td>
+                  &approx;{{ (field.rs[field.param.mainBeamPoint] / field.param.average).toFixed(3) }}
+                  &approx;{{
+                    (10 * Math.log10(field.rs[field.param.mainBeamPoint] / field.param.average)).toFixed(3)
+                  }}dBi
+                </td>
+                <td @click="cursorFunction='directivity'"
+                    style="cursor: pointer"
+                    :class="{selected:cursorFunction==='directivity'}">
+                  <span v-if="cursorFunction==='directivity'&&cursorRAD!==null">
+                    &approx;{{ (field.rs[cursorRAD] / field.param.average).toFixed(3) }}
+                    &approx;{{ (10 * Math.log10(field.rs[cursorRAD] / field.param.average)).toFixed(3) }}dBi
+                  </span>
+                  <span v-else>NaN</span>
+                </td>
+                <td>&approx;{{ (field.param.leftBeam - field.param.rightBeam).toFixed(3) }} rad</td>
+                <td>&approx;{{ field.param.mainBeam.toFixed(3) }} rad</td>
               </tr>
               </tbody>
             </table>
@@ -74,7 +111,9 @@
               <p>x: <input type="number" step="0.1" v-model="item.x" @input="updateDraw"> &lambda;</p>
               <p>y: <input type="number" step="0.1" v-model="item.y" @input="updateDraw"> &lambda;</p>
               <p>{{ $t('phase') }}: <input type="number" v-model="item.phase" @input="updateDraw"> rad</p>
-              <p><button @click="deletePoint(idx)">{{ $t('delete') }}</button></p>
+              <p>
+                <button @click="deletePoint(idx)">{{ $t('delete') }}</button>
+              </p>
             </li>
             <li @click="cursorFunction='point';pointSelect=-1"
                 style="cursor: pointer"
@@ -102,6 +141,7 @@
         </details>
       </div>
     </div>
+    </div>
   </div>
 </template>
 
@@ -114,34 +154,25 @@ let yDirScale
 let dirScale
 let xPointScale
 let yPointScale
-let field
-let cursorEle
 let stashTimer = -1
+// SVG element
+let cursorEle, radiationPatternPath, mainBeamPath, halfPowerBeamPath, pointsPath
 
 export default {
   name: 'Home',
   data () {
     return {
-      svg: null,
-      directivityPath: null,
-      mainBeamPath: null,
-      halfPowerBeamPath: null,
-      pointsPath: null,
-      cartesianAxis: null,
-      polarAxis: null,
+      field: new Field([]),
       views: {
         points: true,
-        directivity: true,
+        radiationPattern: true,
         cartesianAxis: true,
+        mainBeam: true,
+        halfPowerBeam: true,
         polarAxis: true
       },
-      param: {
-        halfPowerBeamWidth: 0,
-        leftBeam: Math.PI,
-        rightBeam: -Math.PI,
-        mainBeam: 0
-      },
       cursorFunction: 'point',
+      cursorRAD: null,
       pointSelect: -1,
       mouseDown: false,
       borderLength: 0,
@@ -156,56 +187,63 @@ export default {
     draw () {
       const path = d3.path()
       // draw directivity
-      path.moveTo(xDirScale(field.rs[0]), yDirScale(0))
-      for (let i = 1; i < field.rs.length; i++) {
-        path.lineTo(xDirScale(field.rs[i] * Math.cos(i * field.dphi)),
-          yDirScale(field.rs[i] * Math.sin(i * field.dphi)))
+      path.moveTo(xDirScale(this.field.rs[0]), yDirScale(0))
+      for (let i = 1; i < this.field.rs.length; i++) {
+        path.lineTo(xDirScale(this.field.rs[i] * Math.cos(i * this.field.dphi)),
+          yDirScale(this.field.rs[i] * Math.sin(i * this.field.dphi)))
       }
       path.closePath()
-      this.directivityPath.attr('d', path)
+      radiationPatternPath.attr('d', path)
       // beam param
       const mainBeam = d3.path()
       mainBeam.moveTo(xDirScale(0), yDirScale(0))
-      mainBeam.lineTo(xDirScale(Math.cos(this.param.mainBeam)), yDirScale(Math.sin(this.param.mainBeam)))
+      mainBeam.lineTo(xDirScale(Math.cos(this.field.param.mainBeam)), yDirScale(Math.sin(this.field.param.mainBeam)))
       mainBeam.closePath()
-      this.mainBeamPath.attr('d', mainBeam)
+      mainBeamPath.attr('d', mainBeam)
       // half-power beam
       const halfPowerBeam = d3.path()
       halfPowerBeam.moveTo(xDirScale(0), yDirScale(0))
-      halfPowerBeam.lineTo(xDirScale(Math.cos(this.param.leftBeam)), yDirScale(Math.sin(this.param.leftBeam)))
+      halfPowerBeam.lineTo(xDirScale(Math.cos(this.field.param.leftBeam)), yDirScale(Math.sin(this.field.param.leftBeam)))
       halfPowerBeam.closePath()
       halfPowerBeam.moveTo(xDirScale(0), yDirScale(0))
-      halfPowerBeam.lineTo(xDirScale(Math.cos(this.param.rightBeam)), yDirScale(Math.sin(this.param.rightBeam)))
-      this.halfPowerBeamPath.attr('d', halfPowerBeam)
+      halfPowerBeam.lineTo(xDirScale(Math.cos(this.field.param.rightBeam)), yDirScale(Math.sin(this.field.param.rightBeam)))
+      halfPowerBeamPath.attr('d', halfPowerBeam)
       // draw points
       const points = d3.path()
-      field.points.forEach(point => {
+      this.field.points.forEach(point => {
         points.arc(
           xPointScale(point.dr / Math.PI / 2 * Math.cos(point.theta)),
           yPointScale(point.dr / Math.PI / 2 * Math.sin(point.theta)),
           5, 0, Math.PI * 2)
         points.closePath()
       })
-      this.pointsPath.attr('d', points)
+      pointsPath.attr('d', points)
     },
     inverseSolvePhase () {
       const phi = parseFloat(this.phiInput)
-      field.inverseSolvePhase(phi)
-      field.points.forEach(({ phase }, idx) => {
+      this.field.inverseSolvePhase(phi)
+      this.field.points.forEach(({ phase }, idx) => {
         this.pointsInput[idx].phase = phase % (2 * Math.PI)
       })
       this.updateDraw()
     },
     updateDraw () {
       // do draw
-      field = new Field(this.pointsInput.map(({ x, y, phase }) => {
+      this.field = new Field(this.pointsInput.map(({
+        x,
+        y,
+        phase
+      }) => {
         return PointSource.fromCartesian(x, y, phase)
       }))
-      this.param = field.param
       this.draw()
     },
     pushPoint (x, y, phase) {
-      this.pointsInput.push({ x, y, phase })
+      this.pointsInput.push({
+        x,
+        y,
+        phase
+      })
       this.updateDraw()
     },
     deletePoint (idx) {
@@ -319,13 +357,11 @@ export default {
     xPointScale = d3.scaleLinear().domain([-2, 2]).range([0, length])
     yPointScale = d3.scaleLinear().domain([-2, 2]).range([length, 0])
     // create svg
-    this.svg = d3.select('#svg')
-      .append('svg')
-      .attr('width', this.borderLength)
-      .attr('height', this.borderLength)
+    d3.select(this.$refs.svg)
       .attr('style', 'cursor: crosshair')
       .on('mouseleave', e => {
         this.mouseDown = false
+        this.cursorRAD = null
         if (this.cursorFunction === 'phi') {
         } else if (this.cursorFunction === 'point') {
           this.xInput = 0
@@ -338,16 +374,25 @@ export default {
       })
       .on('mousemove', e => {
         const cursorPath = d3.path()
-        if (this.cursorFunction === 'phi') {
+        if (this.cursorFunction === 'phi' || this.cursorFunction === 'directivity') {
           const x = xDirScale.invert(e.offsetX)
           const y = yDirScale.invert(e.offsetY)
           const direction = Math.atan2(y, x)
           cursorPath.moveTo(xDirScale(0), yDirScale(0))
           cursorPath.lineTo(xDirScale(Math.cos(direction)), yDirScale(Math.sin(direction)))
-          if (this.mouseDown) {
-            // real-time
-            this.phiInput = direction
-            this.inverseSolvePhase()
+          if (this.cursorFunction === 'phi') {
+            if (this.mouseDown) {
+              // real-time
+              this.phiInput = direction
+              this.inverseSolvePhase()
+            }
+          } else if (this.cursorFunction === 'directivity') {
+            // show param
+            if (direction >= 0) {
+              this.cursorRAD = Math.round(direction * this.field.rs.length / (Math.PI * 2))
+            } else {
+              this.cursorRAD = Math.round((direction + Math.PI * 2) * this.field.rs.length / (Math.PI * 2))
+            }
           }
         } else if (this.cursorFunction === 'point') {
           const x = xPointScale.invert(e.offsetX)
@@ -364,7 +409,9 @@ export default {
           } else if (this.mouseDown) {
             // change position
             this.pointsInput[this.pointSelect] = {
-              x, y, phase: this.pointsInput[this.pointSelect].phase
+              x,
+              y,
+              phase: this.pointsInput[this.pointSelect].phase
             }
             this.updateDraw()
           }
@@ -387,62 +434,68 @@ export default {
             this.pushPoint(x, y, 0)
           } else {
             // move point
-            this.pointsInput[this.pointSelect] = { x, y, phase: this.pointsInput[this.pointSelect].phase }
+            this.pointsInput[this.pointSelect] = {
+              x,
+              y,
+              phase: this.pointsInput[this.pointSelect].phase
+            }
             this.updateDraw()
           }
         }
       })
-      .on('mouseup', () => { this.mouseDown = false })
+      .on('mouseup', () => {
+        this.mouseDown = false
+      })
     // add cursor path
-    cursorEle = this.svg.append('path')
+    cursorEle = d3.select(this.$refs.cursor)
       .attr('stroke', '#000000')
       .attr('stroke-dasharray', '10,15')
     // add polar axis
-    const polarAxis = d3.path()
+    const polarAxisPath = d3.path()
     for (let i = 0.2; i <= 1; i += 0.2) {
-      polarAxis.arc(xDirScale(0), yDirScale(0), dirScale(i), 0, Math.PI * 2)
-      polarAxis.closePath()
+      polarAxisPath.arc(xDirScale(0), yDirScale(0), dirScale(i), 0, Math.PI * 2)
+      polarAxisPath.closePath()
     }
     for (let rad = 0; rad < Math.PI * 2; rad += Math.PI / 8) {
-      polarAxis.moveTo(xDirScale(Math.cos(rad)), yDirScale(Math.sin(rad)))
-      polarAxis.lineTo(xDirScale(-Math.cos(rad)), yDirScale(-Math.sin(rad)))
-      polarAxis.closePath()
+      polarAxisPath.moveTo(xDirScale(Math.cos(rad)), yDirScale(Math.sin(rad)))
+      polarAxisPath.lineTo(xDirScale(-Math.cos(rad)), yDirScale(-Math.sin(rad)))
+      polarAxisPath.closePath()
     }
-    this.polarAxis = this.svg.append('path')
+    d3.select(this.$refs.polarAxis)
       .attr('stroke', 'rgba(255,116,49,0.31)')
       .attr('fill', 'none')
-      .attr('d', polarAxis)
+      .attr('d', polarAxisPath)
     // add Cartesian axis
-    const cartesianAxis = d3.path()
+    const cartesianAxisPath = d3.path()
     for (let i = -2; i <= 2; i += 0.5) {
-      cartesianAxis.moveTo(xPointScale(i), yPointScale(-2))
-      cartesianAxis.lineTo(xPointScale(i), yPointScale(2))
-      cartesianAxis.closePath()
-      cartesianAxis.moveTo(xPointScale(-2), yPointScale(i))
-      cartesianAxis.lineTo(xPointScale(2), yPointScale(i))
-      cartesianAxis.closePath()
+      cartesianAxisPath.moveTo(xPointScale(i), yPointScale(-2))
+      cartesianAxisPath.lineTo(xPointScale(i), yPointScale(2))
+      cartesianAxisPath.closePath()
+      cartesianAxisPath.moveTo(xPointScale(-2), yPointScale(i))
+      cartesianAxisPath.lineTo(xPointScale(2), yPointScale(i))
+      cartesianAxisPath.closePath()
     }
-    this.cartesianAxis = this.svg.append('path')
+    d3.select(this.$refs.cartesianAxis)
       .attr('stroke', '#005EFF66')
       .attr('fill', 'none')
-      .attr('d', cartesianAxis)
+      .attr('d', cartesianAxisPath)
     // add directivity
-    this.directivityPath = this.svg.append('path')
+    radiationPatternPath = d3.select(this.$refs.directivity)
       .attr('stroke', '#ff6518')
       .attr('stroke-width', '2px')
       .attr('fill', 'none')
     // main beam path
-    this.mainBeamPath = this.svg.append('path')
+    mainBeamPath = d3.select(this.$refs.mainBeam)
       .attr('stroke', '#ff6518')
       .attr('stroke-width', '2px')
       .attr('stroke-dasharray', '10,15')
     // half-power beam path
-    this.halfPowerBeamPath = this.svg.append('path')
+    halfPowerBeamPath = d3.select(this.$refs.halfPowerBeam)
       .attr('stroke', '#ff6518')
       .attr('stroke-width', '1px')
       .attr('stroke-dasharray', '10,15')
     // add points
-    this.pointsPath = this.svg.append('path')
+    pointsPath = d3.select(this.$refs.points)
       .attr('fill', '#146bff')
     const stash = localStorage.getItem('array-field-stash')
     if (stash !== null) {
@@ -457,7 +510,6 @@ export default {
         this.updateDraw()
       } catch (e) {
         console.error(e)
-        alert(this.$t('alert.errorFile'))
       }
     }
   }
@@ -469,25 +521,46 @@ p {
   margin: 0;
   padding: 0;
 }
+
 label {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
 }
-table,td,th {
+
+table, td, th {
   border: 1px solid #000000;
   border-collapse: collapse;
   text-align: center;
 }
+
 #home {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+#row {
   width: 100%;
   display: flex;
   justify-content: center;
   flex-wrap: wrap;
 }
 
+@media screen and (min-width: 1600px) {
+  #row {
+    width: 80%;
+  }
+}
+
+@media screen and (min-width: 2500px){
+  #row {
+    width: 60%;
+  }
+}
+
 .selected {
-  background-color: rgba(0,64,130,0.45);
+  background-color: rgba(0, 64, 130, 0.45);
 }
 
 .graph {
@@ -504,10 +577,12 @@ table,td,th {
   .graph {
     width: 50%;
   }
+
   .panel {
     width: 50%;
     height: 90vh;
   }
+
   .panel-body {
     padding-left: 30px;
   }

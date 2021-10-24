@@ -1,9 +1,22 @@
+/**
+ * @param {Number} dr
+ * @param {Number} theta
+ * @param {Number} phase
+ * @constructor
+ */
 function PointSource (dr, theta, phase) {
   this.dr = dr
   this.theta = theta
   this.phase = phase
 }
 
+/**
+ * Create new point source from Cartesian axis
+ * @param {Number} x
+ * @param {Number} y
+ * @param {Number} phase
+ * @return {PointSource}
+ */
 PointSource.fromCartesian = function (x, y, phase) {
   if (x === 0) {
     return new PointSource(
@@ -20,16 +33,27 @@ PointSource.fromCartesian = function (x, y, phase) {
   }
 }
 
+/**
+ * Calculate field
+ * @param {Array<PointSource>} points
+ * @param {Number} circlePoints
+ * @constructor
+ */
 function Field (points, circlePoints = 360) {
   this.points = points
   this.rs = Array(circlePoints).fill(0)
   // calculate, |sum(dots) of e^(i*dr*cos(phi-theta)+phase)|
   this.dphi = Math.PI * 2 / circlePoints
   this.param = {
+    // direction
     mainBeam: 0,
     leftBeam: Math.PI,
     rightBeam: -Math.PI,
-    halfPowerBeamWidth: Math.PI * 2
+    halfPowerBeamWidth: Math.PI * 2,
+    // point position
+    mainBeamPoint: 0,
+    // value
+    average: 1
   }
   if (points.length === 0) {
     return
@@ -49,6 +73,7 @@ function Field (points, circlePoints = 360) {
   for (let i = 0; i < circlePoints; i++) {
     // FIXME: use equals(?)
     if (this.rs[i] === maxRs) {
+      this.param.mainBeamPoint = i
       // main beam
       this.param.mainBeam = i * Math.PI * 2 / circlePoints
       // find right
@@ -69,15 +94,26 @@ function Field (points, circlePoints = 360) {
       }
     }
   }
+  // get average
+  const sum = this.rs.reduce((acc, val) => {
+    return acc + val
+  }, 0)
+  this.param.average = sum / circlePoints / maxRs
   // normalize
-  this.rs = this.rs.map(v => v / maxRs)
+  this.rs.forEach((v, i) => {
+    this.rs[i] = v / maxRs
+  })
 }
 
+/**
+ * Solve points phase
+ * @param {Number} phi
+ */
 Field.prototype.inverseSolvePhase = function (phi) {
   // let dr*cos(phi-theta)+phase=0
   // update phase
-  this.points = this.points.map(({ dr, theta, phase }) => {
-    return new PointSource(dr, theta, -dr * Math.cos(phi - theta))
+  this.points.forEach(({ dr, theta }, idx) => {
+    this.points[idx].phase = -dr * Math.cos(phi - theta)
   })
 }
 
