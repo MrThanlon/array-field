@@ -22,6 +22,7 @@
             <button @click="clear">{{ $t('clear') }}</button>
             <button @click="exportImage('svg')">{{ $t('exportImage') }}</button>
             <button @click="exportImage('png')">{{ $t('exportPNG') }}</button>
+            <button @click="exportResult">{{ $t('exportResult') }}</button>
           </div>
         </details>
         <details open>
@@ -79,8 +80,9 @@
               <tbody>
               <tr>
                 <td>
-                  &approx;{{ (field.rs[field.param.mainBeamPoint] / field.param.average).toFixed(3) }}
                   &approx;{{
+                    (field.rs[field.param.mainBeamPoint] / field.param.average).toFixed(3)
+                  }}&approx;{{
                     (10 * Math.log10(field.rs[field.param.mainBeamPoint] / field.param.average)).toFixed(3)
                   }}dBi
                 </td>
@@ -93,8 +95,8 @@
                   </span>
                   <span v-else>NaN</span>
                 </td>
-                <td>&approx;{{ (field.param.leftBeam - field.param.rightBeam).toFixed(3) }} rad</td>
-                <td>&approx;{{ field.param.mainBeam.toFixed(3) }} rad</td>
+                <td>&approx;{{ (field.param.leftBeam - field.param.rightBeam).toFixed(3) }}rad</td>
+                <td>&approx;{{ field.param.mainBeam.toFixed(3) }}rad</td>
               </tr>
               </tbody>
             </table>
@@ -334,6 +336,17 @@ export default {
         // unknown type
         console.error('unknown image type')
       }
+    },
+    exportResult () {
+      // generate string
+      const result = 'dir\tval\n' + this.field.rs.map((v, idx) => {
+        return `${idx * Math.PI * 2 / this.field.rs.length}\t${v}`
+      }).join('\n')
+      const resultBlob = new Blob([result])
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(resultBlob)
+      a.download = 'result.txt'
+      a.click()
     }
   },
   beforeUpdate () {

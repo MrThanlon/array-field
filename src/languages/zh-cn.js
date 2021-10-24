@@ -15,6 +15,7 @@ export default {
   clear: '清除',
   exportImage: '导出SVG图片',
   exportPNG: '导出PNG图片',
+  exportResult: '导出结果',
   radiationPattern: '波瓣图',
   radiationPatternAxis: '波瓣图坐标系',
   mainBeamDirection: '主瓣方向',
