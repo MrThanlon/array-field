@@ -18,10 +18,15 @@
         <div style="display: flex;justify-content: space-between;flex-wrap: wrap">
           <label>
             {{ $t('computeMethod') }}
-            <select v-model="settings.computeMethod" @change="changeComputeMethod">
+            <select v-model="settings.computeMethod" @change="changeSettings">
               <option value="cpu">CPU</option>
               <option value="vertex">GPU顶点着色器(不支持计算参数)</option>
             </select>
+          </label>
+
+          <label>
+            {{ $t('detail') }}
+            <input type="number" step="1" v-model="settings.detail" @change="changeSettings">
           </label>
         </div>
       </details>
@@ -65,6 +70,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 import { Field, PointSource } from '../utils/calculate3d'
 
 const width = Math.max(window.innerWidth / 2, 768 / 2)
+console.debug(width)
 const height = width
 let scene = new THREE.Scene()
 let field
@@ -81,33 +87,58 @@ const pointMaterial = new THREE.PointsMaterial({
 scene.add(new THREE.Points(pointsGeometry, pointMaterial))
 let controls = null
 let stashTimer = -1
+const defaultData = {
+  settings: {
+    computeMethod: 'cpu',
+    detail: 40
+  },
+  input: {
+    x: 0,
+    y: 0,
+    z: 0,
+    phase: 0
+  },
+  points: []
+}
+
+function loadData (target, data) {
+  Object.keys(data).forEach(key => {
+    if (defaultData[key] instanceof Object && !Array.isArray(defaultData[key])) {
+      loadData(target[key], data[key])
+    } else {
+      target[key] = data[key]
+    }
+  })
+}
+
+// eslint-disable-next-line no-unused-vars
+function dumpData (data) {
+  return Object.keys(defaultData).reduce((acc, cur) => {
+    if (defaultData[cur] instanceof Object && !Array.isArray(defaultData[cur])) {
+      acc[cur] = dumpData(data[cur])
+    } else {
+      acc[cur] = data[cur]
+    }
+    return acc
+  }, {})
+}
 
 export default {
   name: 'Solver3d',
   data () {
-    return {
-      settings: {
-        computeMethod: 'cpu'
-      },
-      input: {
-        x: 0,
-        y: 0,
-        z: 0,
-        phase: 0
-      },
-      points: []
-    }
+    return defaultData
   },
-  beforeUpdate () {
+  updated () {
     this.update()
     // stash in 1Hz
     if (stashTimer > 0) {
       clearTimeout(stashTimer)
     }
-    stashTimer = setTimeout(this.stash, 1000)
+    stashTimer = setTimeout(this.stash, 5000)
   },
   methods: {
     stash () {
+      // FIXME: do not specify key
       localStorage.setItem('array-field-stash-3d', JSON.stringify({
         settings: this.settings,
         input: this.input,
@@ -116,10 +147,13 @@ export default {
       }))
       console.debug('stashed')
     },
-    changeComputeMethod () {
-      // TODO: reset scene
+    changeSettings () {
       scene = new THREE.Scene()
-      field = new Field(this.points.map(v => new PointSource(v.x, v.y, v.z, v.phase)), 40, this.settings.computeMethod)
+      field = new Field(
+        this.points.map(v => new PointSource(v.x, v.y, v.z, v.phase)),
+        this.settings.detail,
+        this.settings.computeMethod
+      )
       scene.add(field.mesh)
     },
     update () {
@@ -145,6 +179,7 @@ export default {
       this.update()
     },
     saveFile () {
+      // FIXME
       const file = JSON.stringify({
         settings: this.settings,
         input: this.input,
@@ -170,9 +205,7 @@ export default {
         // try parse
         try {
           const fileObject = JSON.parse(await input.files[0].text())
-          this.settings = fileObject.settings
-          this.input = fileObject.input
-          this.points = fileObject.points
+          loadData(this, fileObject)
           camera.position.set(
             fileObject.cameraPosition.x,
             fileObject.cameraPosition.y,
@@ -187,9 +220,12 @@ export default {
       input.click()
     },
     clear () {
+      loadData(this, defaultData)
       this.points = []
+      this.stash()
       camera.position.set(0, 0, 1.5)
       camera.lookAt(scene.position)
+      console.debug(this.points)
       this.update()
     },
     exportImage (type) {
@@ -213,9 +249,7 @@ export default {
     if (stash !== null) {
       try {
         const fileObject = JSON.parse(stash)
-        this.settings = fileObject.settings
-        this.input = fileObject.input
-        this.points = fileObject.points
+        loadData(this, fileObject)
         camera.position.set(
           fileObject.cameraPosition.x,
           fileObject.cameraPosition.y,
@@ -229,7 +263,7 @@ export default {
       camera.position.set(0, 0, 1.5)
       camera.lookAt(scene.position)
     }
-    field = new Field(this.points.map(v => new PointSource(v.x, v.y, v.z, v.phase)), 40, this.settings.computeMethod)
+    field = new Field(this.points.map(v => new PointSource(v.x, v.y, v.z, v.phase)), this.settings.detail, this.settings.computeMethod)
     scene.add(field.mesh)
     // this.update()
     controls.minDistance = 1.2
