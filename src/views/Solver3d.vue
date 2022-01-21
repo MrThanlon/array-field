@@ -19,8 +19,8 @@
           <label>
             {{ $t('computeMethod') }}
             <select v-model="settings.computeMethod" @change="changeSettings">
-              <option value="cpu">CPU</option>
-              <option value="vertex">GPU顶点着色器(不支持计算参数)</option>
+              <option value="cpu">{{ $t('CPU') }}</option>
+              <option value="vertex">{{ $t('GPU') }}</option>
             </select>
           </label>
 
@@ -33,28 +33,36 @@
 
       <details open>
         <summary>{{ $t('menu.pointSources') }}</summary>
-        <ul>
-          <li v-for="(point, idx) in points" :key="point">
-            <p>x: <input type="number" step="0.1" v-model="point.x"> &lambda;</p>
-            <p>y: <input type="number" step="0.1" v-model="point.y"> &lambda;</p>
-            <p>z: <input type="number" step="0.1" v-model="point.z"> &lambda;</p>
-            <p>{{ $t('phase') }}: <input type="number" v-model="point.phase"> rad</p>
-            <p>
-              <button @click="deletePoint(idx)">{{ $t('delete') }}</button>
-            </p>
-          </li>
-          <li>
-            <p>x: <input type="number" step="0.1" v-model="input.x"> &lambda;</p>
-            <p>y: <input type="number" step="0.1" v-model="input.y"> &lambda;</p>
-            <p>z: <input type="number" step="0.1" v-model="input.z"> &lambda;</p>
-            <p>{{ $t('phase') }}: <input type="number" v-model="input.phase"> rad</p>
-            <p>
-              <button @click="pushPoint">
-                {{ $t('add') }}
-              </button>
-            </p>
-          </li>
-        </ul>
+        <table>
+          <thead>
+          <tr>
+            <th>{{ $t('serial') }}</th>
+            <th>x(&lambda;)</th>
+            <th>y(&lambda;)</th>
+            <th>z(&lambda;)</th>
+            <th>{{ $t('phase') }}(rad)</th>
+            <th>{{ $t('operation') }}</th>
+          </tr>
+          </thead>
+          <tbody>
+          <tr v-for="(point, idx) in points" :key="point">
+            <td>{{ idx + 1 }}</td>
+            <td><input type="number" step="0.1" v-model="point.x"></td>
+            <td><input type="number" step="0.1" v-model="point.y"></td>
+            <td><input type="number" step="0.1" v-model="point.z"></td>
+            <td><input type="number" v-model="point.phase"></td>
+            <td><button @click="deletePoint(idx)">{{ $t('delete') }}</button></td>
+          </tr>
+          <tr>
+            <td>{{ points.length + 1 }}</td>
+            <td><input type="number" step="0.1" v-model="input.x"></td>
+            <td><input type="number" step="0.1" v-model="input.y"></td>
+            <td><input type="number" step="0.1" v-model="input.z"></td>
+            <td><input type="number" v-model="input.phase"></td>
+            <td><button @click="pushPoint">{{ $t('add') }}</button></td>
+          </tr>
+          </tbody>
+        </table>
       </details>
 
       <details open>
@@ -294,9 +302,17 @@ p {
   height: 30vh;
   overflow-y: scroll;
   padding: 3px;
+  flex-grow: 1;
+}
+
+input {
+  max-width: 50px;
 }
 
 @media screen and (min-width: 768px) {
+  input {
+    max-width: 80px;
+  }
   .panel {
     width: 400px;
     height: 90vh;
