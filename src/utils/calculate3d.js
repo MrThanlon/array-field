@@ -165,27 +165,32 @@ Field.prototype.updatePoints = function (points) {
   } else if (this.useGPU === 'fragment') {
   } else if (this.useGPU === 'compute') {
   } else {
-    const geometry = this.geometry.clone()
-    const attr = geometry.getAttribute('position')
-    for (let i = 0; i < attr.count; i++) {
-      const offset = i * attr.itemSize
-      const x = attr.array[offset]
-      const y = attr.array[offset + 1]
-      const z = attr.array[offset + 2]
-      const riComplex = this.points.reduce((pre, point) => {
-        // vec(x,y,z) is unit vec
-        const psi = (x * point.x + y * point.y + z * point.z) + point.phase
-        pre[0] += Math.cos(psi)
-        pre[1] += Math.sin(psi)
-        return pre
-      }, new Float32Array(2))
-      const ri = Math.sqrt(riComplex[0] ** 2 + riComplex[1] ** 2) / this.points.length
-      // update new coordinate
-      attr.array[offset] = ri * x
-      attr.array[offset + 1] = ri * y
-      attr.array[offset + 2] = ri * z
-    }
-    this.mesh = new Mesh(geometry, material)
+    if (points.length !== 0) {
+      if (!('originGeometry' in this)) {
+        this.originGeometry = new IcosahedronGeometry(1, this.detail)
+      }
+      const geoAttr = this.originGeometry.getAttribute('position')
+      const attr = this.geometry.getAttribute('position')
+      for (let i = 0; i < attr.count; i++) {
+        const offset = i * attr.itemSize
+        const x = geoAttr.array[offset]
+        const y = geoAttr.array[offset + 1]
+        const z = geoAttr.array[offset + 2]
+        const riComplex = points.reduce((pre, point) => {
+          // vec(x,y,z) is unit vec
+          const psi = (x * point.x + y * point.y + z * point.z) + point.phase
+          pre[0] += Math.cos(psi)
+          pre[1] += Math.sin(psi)
+          return pre
+        }, new Float32Array(2))
+        const ri = Math.sqrt(riComplex[0] ** 2 + riComplex[1] ** 2) / points.length
+        // update new coordinate
+        attr.array[offset] = ri * x
+        attr.array[offset + 1] = ri * y
+        attr.array[offset + 2] = ri * z
+      }
+      this.geometry.attributes.position.needsUpdate = true
+    } else {}
   }
   this.points = points
 }

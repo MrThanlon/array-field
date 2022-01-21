@@ -1,5 +1,6 @@
 export default {
   chooseFrom2d3d: '从2D/3D中选择一个',
+  computeMethod: '计算方式',
   menu: {
     files: '文件',
     settings: '设置',

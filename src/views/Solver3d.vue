@@ -16,6 +16,13 @@
       <details open>
         <summary>{{ $t('menu.settings') }}</summary>
         <div style="display: flex;justify-content: space-between;flex-wrap: wrap">
+          <label>
+            {{ $t('computeMethod') }}
+            <select v-model="settings.computeMethod" @change="changeComputeMethod">
+              <option value="cpu">CPU</option>
+              <option value="vertex">GPU顶点着色器(不支持计算参数)</option>
+            </select>
+          </label>
         </div>
       </details>
 
@@ -59,12 +66,10 @@ import { Field, PointSource } from '../utils/calculate3d'
 
 const width = Math.max(window.innerWidth / 2, 768 / 2)
 const height = width
-const scene = new THREE.Scene()
+let scene = new THREE.Scene()
+let field
 const camera = new THREE.PerspectiveCamera(90, width / height, 0.1, 100)
 let renderer = null
-// let geometry = new THREE.IcosahedronGeometry(1, 3)
-const field = new Field([], 40, 'vertex')
-scene.add(field.mesh)
 const pointsGeometry = new THREE.BufferGeometry()
 const pointMaterial = new THREE.PointsMaterial({
   size: 0.1,
@@ -82,6 +87,7 @@ export default {
   data () {
     return {
       settings: {
+        computeMethod: 'cpu'
       },
       input: {
         x: 0,
@@ -93,6 +99,7 @@ export default {
     }
   },
   beforeUpdate () {
+    this.update()
     // stash in 1Hz
     if (stashTimer > 0) {
       clearTimeout(stashTimer)
@@ -108,6 +115,12 @@ export default {
         cameraPosition: camera.position
       }))
       console.debug('stashed')
+    },
+    changeComputeMethod () {
+      // TODO: reset scene
+      scene = new THREE.Scene()
+      field = new Field(this.points.map(v => new PointSource(v.x, v.y, v.z, v.phase)), 40, this.settings.computeMethod)
+      scene.add(field.mesh)
     },
     update () {
       field.updatePoints(this.points.map(v => new PointSource(v.x, v.y, v.z, v.phase)))
@@ -131,20 +144,67 @@ export default {
       this.points.splice(idx, 1)
       this.update()
     },
-    saveFile () {},
-    openFile () {},
+    saveFile () {
+      const file = JSON.stringify({
+        settings: this.settings,
+        input: this.input,
+        points: this.points,
+        cameraPosition: camera.position
+      })
+      const fileBlob = new Blob([file])
+      const a = document.createElement('a')
+      a.download = 'array-field-3d.json'
+      a.href = URL.createObjectURL(fileBlob)
+      a.click()
+    },
+    openFile () {
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.accept = '.json'
+      input.multiple = false
+      input.onchange = async () => {
+        if (input.files.length <= 0) {
+          alert(this.$t('alert.noFile'))
+          return
+        }
+        // try parse
+        try {
+          const fileObject = JSON.parse(await input.files[0].text())
+          this.settings = fileObject.settings
+          this.input = fileObject.input
+          this.points = fileObject.points
+          camera.position.set(
+            fileObject.cameraPosition.x,
+            fileObject.cameraPosition.y,
+            fileObject.cameraPosition.z
+          )
+          camera.lookAt(scene.position)
+        } catch (e) {
+          console.error(e)
+          alert(this.$t('alert.errorFile'))
+        }
+      }
+      input.click()
+    },
     clear () {
       this.points = []
       camera.position.set(0, 0, 1.5)
       camera.lookAt(scene.position)
       this.update()
     },
-    exportImage (type) {}
+    exportImage (type) {
+      if (type === 'png') {
+        window.open('about:blank', 'image from canvas')
+          .document
+          .write(`<img src="${this.$refs.cvs.toDataURL('image/png')}" alt="from canvas">`)
+      } else {}
+    }
   },
   mounted () {
     renderer = new THREE.WebGLRenderer({
       antialias: true,
-      canvas: this.$refs.cvs
+      canvas: this.$refs.cvs,
+      preserveDrawingBuffer: true
     })
     renderer.setSize(width, height)
     renderer.setClearColor(0xffffff, 1)
@@ -169,7 +229,9 @@ export default {
       camera.position.set(0, 0, 1.5)
       camera.lookAt(scene.position)
     }
-    this.update()
+    field = new Field(this.points.map(v => new PointSource(v.x, v.y, v.z, v.phase)), 40, this.settings.computeMethod)
+    scene.add(field.mesh)
+    // this.update()
     controls.minDistance = 1.2
     controls.maxDistance = 3
     controls.zoomSpeed = 0.1
