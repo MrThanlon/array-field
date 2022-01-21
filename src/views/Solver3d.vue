@@ -1,71 +1,209 @@
 <template>
-  <div>
-    <canvas ref="cvs" width="600" height="400"></canvas>
+  <div style="display: flex;justify-content: center;flex-wrap: wrap;">
+    <canvas ref="cvs" style="border: black 1px solid" @mouseup="stash">
+    </canvas>
+    <div class="panel">
+      <details open>
+        <summary>{{ $t('menu.files') }}</summary>
+        <div style="display: flex;flex-wrap: wrap;justify-content: space-between">
+          <button @click="saveFile">{{ $t('saveFile') }}</button>
+          <button @click="openFile">{{ $t('openFile') }}</button>
+          <button @click="clear">{{ $t('clear') }}</button>
+          <button @click="exportImage('png')">{{ $t('exportPNG') }}</button>
+        </div>
+      </details>
+
+      <details open>
+        <summary>{{ $t('menu.settings') }}</summary>
+        <div style="display: flex;justify-content: space-between;flex-wrap: wrap">
+        </div>
+      </details>
+
+      <details open>
+        <summary>{{ $t('menu.pointSources') }}</summary>
+        <ul>
+          <li v-for="(point, idx) in points" :key="point">
+            <p>x: <input type="number" step="0.1" v-model="point.x"> &lambda;</p>
+            <p>y: <input type="number" step="0.1" v-model="point.y"> &lambda;</p>
+            <p>z: <input type="number" step="0.1" v-model="point.z"> &lambda;</p>
+            <p>{{ $t('phase') }}: <input type="number" v-model="point.phase"> rad</p>
+            <p>
+              <button @click="deletePoint(idx)">{{ $t('delete') }}</button>
+            </p>
+          </li>
+          <li>
+            <p>x: <input type="number" step="0.1" v-model="input.x"> &lambda;</p>
+            <p>y: <input type="number" step="0.1" v-model="input.y"> &lambda;</p>
+            <p>z: <input type="number" step="0.1" v-model="input.z"> &lambda;</p>
+            <p>{{ $t('phase') }}: <input type="number" v-model="input.phase"> rad</p>
+            <p>
+              <button @click="pushPoint">
+                {{ $t('add') }}
+              </button>
+            </p>
+          </li>
+        </ul>
+      </details>
+
+      <details open>
+        <summary>{{ $t('menu.inverseSolvePhase') }}</summary>
+      </details>
+    </div>
   </div>
 </template>
 
 <script>
 import * as THREE from 'three'
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
+import { Field, PointSource } from '../utils/calculate3d'
 
-// eslint-disable-next-line no-unused-vars
-function normalSphere (r = 1, phiSamples = 20, thetaSamples = 40) {
-  // theta: 0 ~ 2 * Math.PI
-  // phi: 0 ~ Math.PI
-  const phiStep = Math.PI / (phiSamples - 2)
-  const thetaStep = Math.PI * 2 / (thetaSamples - 2)
-  const ans = [[0, 0, r], [0, 0, -r]]
-  for (let i = 1; i < phiSamples - 1; i++) {
-    const rSinPhi = r * Math.sin(i * phiStep)
-    const rCosPhi = r * Math.cos(i * phiStep)
-    for (let j = 1; j < thetaSamples - 1; j++) {
-      ans.push([rSinPhi * Math.cos(j * thetaStep), rSinPhi * Math.sin(j * thetaStep), rCosPhi])
-    }
-  }
-  return ans
-}
-
-// eslint-disable-next-line no-unused-vars
-function fibonacciSphere (r = 1, samples = 2048) {
-  const fib = (Math.sqrt(5) - 1) / 2
-  return new Array(samples).fill(0).map((v, i) => {
-    const z = (2 * i + 1) / samples - 1
-    const tz = Math.sqrt(1 - z ** 2)
-    return [tz * Math.cos(2 * Math.PI * (i + 1) * fib) * r, tz * Math.sin(2 * Math.PI * (i + 1) * fib) * r, z * r]
-  })
-}
+const width = Math.max(window.innerWidth / 2, 768 / 2)
+const height = width
+const scene = new THREE.Scene()
+const camera = new THREE.PerspectiveCamera(90, width / height, 0.1, 100)
+let renderer = null
+// let geometry = new THREE.IcosahedronGeometry(1, 3)
+const field = new Field([], 40, 'vertex')
+scene.add(field.mesh)
+const pointsGeometry = new THREE.BufferGeometry()
+const pointMaterial = new THREE.PointsMaterial({
+  size: 0.1,
+  map: null,
+  sizeAttenuation: true,
+  alphaTest: 0.5,
+  transparent: true
+})
+scene.add(new THREE.Points(pointsGeometry, pointMaterial))
+let controls = null
+let stashTimer = -1
 
 export default {
   name: 'Solver3d',
-  mounted () {
-    new THREE.TextureLoader().load('/disc.png', (texture) => {
-      const scene = new THREE.Scene()
-      const camera = new THREE.PerspectiveCamera(60, 1.5, 0.1, 1000)
-      const renderer = new THREE.WebGLRenderer({
-        antialias: true,
-        canvas: this.$refs.cvs
+  data () {
+    return {
+      settings: {
+      },
+      input: {
+        x: 0,
+        y: 0,
+        z: 0,
+        phase: 0
+      },
+      points: []
+    }
+  },
+  beforeUpdate () {
+    // stash in 1Hz
+    if (stashTimer > 0) {
+      clearTimeout(stashTimer)
+    }
+    stashTimer = setTimeout(this.stash, 1000)
+  },
+  methods: {
+    stash () {
+      localStorage.setItem('array-field-stash-3d', JSON.stringify({
+        settings: this.settings,
+        input: this.input,
+        points: this.points,
+        cameraPosition: camera.position
+      }))
+      console.debug('stashed')
+    },
+    update () {
+      field.updatePoints(this.points.map(v => new PointSource(v.x, v.y, v.z, v.phase)))
+    },
+    pushPoint () {
+      this.points.push({
+        x: parseFloat(this.input.x),
+        y: parseFloat(this.input.y),
+        z: parseFloat(this.input.z),
+        phase: parseFloat(this.input.phase)
       })
-      renderer.setSize(600, 400)
-      const geometry = new THREE.BufferGeometry().setFromPoints(fibonacciSphere(10).map(v => new THREE.Vector3(v[0], v[1], v[2])))
-      const material = new THREE.PointsMaterial({
-        size: 1,
-        map: texture,
-        sizeAttenuation: true,
-        alphaTest: 0.5,
-        transparent: true
-      })
-      material.color.setHSL(0.1, 0.5, 0.5)
-      const points = new THREE.Points(geometry, material)
-      scene.add(points)
-      camera.position.z = 20
-      camera.position.y = 10
-      camera.position.x = 5
+      this.update()
+      this.input = {
+        x: 0,
+        y: 0,
+        z: 0,
+        phase: 0
+      }
+    },
+    deletePoint (idx) {
+      this.points.splice(idx, 1)
+      this.update()
+    },
+    saveFile () {},
+    openFile () {},
+    clear () {
+      this.points = []
+      camera.position.set(0, 0, 1.5)
       camera.lookAt(scene.position)
-      renderer.render(scene, camera)
+      this.update()
+    },
+    exportImage (type) {}
+  },
+  mounted () {
+    renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      canvas: this.$refs.cvs
     })
+    renderer.setSize(width, height)
+    renderer.setClearColor(0xffffff, 1)
+    controls = new OrbitControls(camera, renderer.domElement)
+    const stash = localStorage.getItem('array-field-stash-3d')
+    if (stash !== null) {
+      try {
+        const fileObject = JSON.parse(stash)
+        this.settings = fileObject.settings
+        this.input = fileObject.input
+        this.points = fileObject.points
+        camera.position.set(
+          fileObject.cameraPosition.x,
+          fileObject.cameraPosition.y,
+          fileObject.cameraPosition.z
+        )
+        camera.lookAt(scene.position)
+      } catch (e) {
+        console.error(e)
+      }
+    } else {
+      camera.position.set(0, 0, 1.5)
+      camera.lookAt(scene.position)
+    }
+    this.update()
+    controls.minDistance = 1.2
+    controls.maxDistance = 3
+    controls.zoomSpeed = 0.1
+    controls.update()
+    new THREE.TextureLoader().load('/disc.png', (texture) => {
+    })
+    renderer.render(scene, camera)
+    function animate () {
+      requestAnimationFrame(animate)
+      controls.update()
+      renderer.render(scene, camera)
+    }
+    animate()
   }
 }
 </script>
 
 <style scoped>
+p {
+  margin: 0;
+  padding: 0;
+}
 
+.panel {
+  width: 100%;
+  height: 30vh;
+  overflow-y: scroll;
+  padding: 3px;
+}
+
+@media screen and (min-width: 768px) {
+  .panel {
+    width: 400px;
+    height: 90vh;
+  }
+}
 </style>

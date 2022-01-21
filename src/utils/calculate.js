@@ -62,8 +62,10 @@ function Field (points, circlePoints = 360) {
     const phi = this.dphi * idx
     const sum = points.reduce((acc, point) => {
       const psi = point.dr * Math.cos(phi - point.theta) + point.phase
-      return [acc[0] + Math.cos(psi), acc[1] + Math.sin(psi)]
-    }, [0, 0])
+      acc[0] += Math.cos(psi)
+      acc[1] += Math.sin(psi)
+      return acc
+    }, new Float32Array(2))
     return Math.sqrt(sum[0] ** 2 + sum[1] ** 2)
   })
   // max result
