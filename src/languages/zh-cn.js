@@ -2,9 +2,11 @@ export default {
   chooseFrom2d3d: '从2D/3D中选择一个',
   computeMethod: '计算方式',
   detail: '细分级别',
+  CPU: 'CPU',
   GPU: 'GPU顶点着色器(不支持计算参数)',
   serial: '序号',
   operation: '操作',
+  solve: '解算',
   menu: {
     files: '文件',
     settings: '设置',

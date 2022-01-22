@@ -68,7 +68,6 @@ function PointSource (x, y, z, phase) {
 
 /**
  * Calculate field
- * TODO: parameters
  * @param {Array<PointSource>} points
  * @param {Number} detail
  * @param {String} useGPU
@@ -197,11 +196,20 @@ Field.prototype.updatePoints = function (points) {
 }
 
 /**
- * Solve points phase
+ * TODO: Solve points phase
  * @param {Number} theta
  * @param {Number} phi
  */
-Field.prototype.inverseSolvePhase = function (theta, phi) {}
+Field.prototype.inverseSolvePhase = function (theta, phi) {
+  const x = Math.sin(theta) * Math.cos(phi)
+  const y = Math.sin(theta) * Math.sin(phi)
+  const z = Math.cos(theta)
+  // let psi=0
+  this.points = this.points.map(point => {
+    point.phase = -(x * point.x + y * point.y + z * point.z)
+    return point
+  })
+}
 
 export {
   Field,

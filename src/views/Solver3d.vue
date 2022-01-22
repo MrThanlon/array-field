@@ -67,6 +67,12 @@
 
       <details open>
         <summary>{{ $t('menu.inverseSolvePhase') }}</summary>
+        <label>
+          &phi; <input type="number" step="0.1" v-model="inverseSolvePhaseInput.phi" @input="inverseSolvePhase">
+        </label>
+        <label>
+          &theta; <input type="number" step="0.1" v-model="inverseSolvePhaseInput.theta" @input="inverseSolvePhase">
+        </label>
       </details>
     </div>
   </div>
@@ -106,17 +112,11 @@ const defaultData = {
     z: 0,
     phase: 0
   },
+  inverseSolvePhaseInput: {
+    phi: 0,
+    theta: 0
+  },
   points: []
-}
-
-function loadData (target, data) {
-  Object.keys(data).forEach(key => {
-    if (defaultData[key] instanceof Object && !Array.isArray(defaultData[key])) {
-      loadData(target[key], data[key])
-    } else {
-      target[key] = data[key]
-    }
-  })
 }
 
 // eslint-disable-next-line no-unused-vars
@@ -145,14 +145,33 @@ export default {
     stashTimer = setTimeout(this.stash, 5000)
   },
   methods: {
-    stash () {
-      // FIXME: do not specify key
-      localStorage.setItem('array-field-stash-3d', JSON.stringify({
+    loadData (data) {
+      // FIXME
+      console.debug(data)
+      Object.keys(defaultData).forEach(key => {
+        if (key in data) {
+          this[key] = data[key]
+        }
+      })
+      camera.position.set(
+        data.cameraPosition.x,
+        data.cameraPosition.y,
+        data.cameraPosition.z
+      )
+      camera.lookAt(scene.position)
+    },
+    dumpData () {
+      return {
         settings: this.settings,
         input: this.input,
         points: this.points,
+        inverseSolvePhaseInput: this.inverseSolvePhaseInput,
         cameraPosition: camera.position
-      }))
+      }
+    },
+    stash () {
+      // FIXME: do not specify key
+      localStorage.setItem('array-field-stash-3d', JSON.stringify(this.dumpData()))
       console.debug('stashed')
     },
     changeSettings () {
@@ -167,6 +186,19 @@ export default {
     update () {
       field.updatePoints(this.points.map(v => new PointSource(v.x, v.y, v.z, v.phase)))
     },
+    inverseSolvePhase () {
+      const { phi, theta } = this.inverseSolvePhaseInput
+      const phiNum = parseFloat(phi)
+      const thetaNum = parseFloat(theta)
+      if (isNaN(phiNum) || isNaN(thetaNum)) {
+        return
+      }
+      field.inverseSolvePhase(phiNum, thetaNum)
+      const period = Math.PI * 2
+      this.points = field.points.map(({ x, y, z, phase }) => {
+        return { x: x / period, y: y / period, z: z / period, phase }
+      })
+    },
     pushPoint () {
       this.points.push({
         x: parseFloat(this.input.x),
@@ -174,7 +206,6 @@ export default {
         z: parseFloat(this.input.z),
         phase: parseFloat(this.input.phase)
       })
-      this.update()
       this.input = {
         x: 0,
         y: 0,
@@ -184,16 +215,10 @@ export default {
     },
     deletePoint (idx) {
       this.points.splice(idx, 1)
-      this.update()
     },
     saveFile () {
       // FIXME
-      const file = JSON.stringify({
-        settings: this.settings,
-        input: this.input,
-        points: this.points,
-        cameraPosition: camera.position
-      })
+      const file = JSON.stringify(this.dumpData())
       const fileBlob = new Blob([file])
       const a = document.createElement('a')
       a.download = 'array-field-3d.json'
@@ -213,7 +238,7 @@ export default {
         // try parse
         try {
           const fileObject = JSON.parse(await input.files[0].text())
-          loadData(this, fileObject)
+          this.loadData(fileObject)
           camera.position.set(
             fileObject.cameraPosition.x,
             fileObject.cameraPosition.y,
@@ -228,13 +253,10 @@ export default {
       input.click()
     },
     clear () {
-      loadData(this, defaultData)
+      this.loadData({ ...defaultData, cameraPosition: camera.position })
       this.points = []
       this.stash()
-      camera.position.set(0, 0, 1.5)
-      camera.lookAt(scene.position)
       console.debug(this.points)
-      this.update()
     },
     exportImage (type) {
       if (type === 'png') {
@@ -257,7 +279,7 @@ export default {
     if (stash !== null) {
       try {
         const fileObject = JSON.parse(stash)
-        loadData(this, fileObject)
+        this.loadData(fileObject)
         camera.position.set(
           fileObject.cameraPosition.x,
           fileObject.cameraPosition.y,
@@ -273,7 +295,6 @@ export default {
     }
     field = new Field(this.points.map(v => new PointSource(v.x, v.y, v.z, v.phase)), this.settings.detail, this.settings.computeMethod)
     scene.add(field.mesh)
-    // this.update()
     controls.minDistance = 1.2
     controls.maxDistance = 3
     controls.zoomSpeed = 0.1
